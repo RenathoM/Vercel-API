@@ -3,16 +3,17 @@ import { NextResponse } from 'next/server';
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const keyword = searchParams.get('keyword') || 'background';
+    const subcategory = searchParams.get('subcategory') || 'Backgrounds';
     const requestedLimit = Number(searchParams.get('limit') || '28');
 
     // API only accepts these limits: 10, 28, 30
     const validLimits = [10, 28, 30];
     const limit = validLimits.includes(requestedLimit) ? requestedLimit : 28;
 
-    const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?keyword=${encodeURIComponent(keyword)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;
+    // Use subcategory filter instead of keyword to get correct Background category items
+    const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?subcategory=${encodeURIComponent(subcategory)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;
 
-    console.log(`[API] Fetching: ${robloxUrl}`);
+    console.log(`[API] Fetching backgrounds with subcategory="${subcategory}", limit=${limit}`);
 
     // Request Roblox Catalog API with User-Agent header (required)
     const response = await fetch(robloxUrl, {

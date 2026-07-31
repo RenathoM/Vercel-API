@@ -17,7 +17,7 @@ local AvatarEditorService = game:GetService("AvatarEditorService")
 
 -- Constants
 local API_BASE_URL = "https://vercel-api-one-red.vercel.app/api/backgrounds"
-local DEFAULT_KEYWORD = "background"
+local DEFAULT_SUBCATEGORY = "Backgrounds"
 local DEFAULT_LIMIT = 28
 local AVATAR_BACKGROUND_ASSET_TYPE_ID = 92
 local BACKGROUND_TYPE_STRINGS = {
@@ -98,10 +98,10 @@ end
 local MAX_RETRIES = 3
 local RETRY_DELAY = 2 -- seconds between retries
 
-local function fetchFromApi(keyword, limit)
-	local encodedKeyword = HttpService:UrlEncode(keyword)
+local function fetchFromApi(subcategory, limit)
+	local encodedSubcategory = HttpService:UrlEncode(subcategory)
 	local requestUrl = API_BASE_URL
-		.. "?keyword=" .. encodedKeyword
+		.. "?subcategory=" .. encodedSubcategory
 		.. "&limit=" .. tostring(limit)
 
 	local success, result
@@ -186,10 +186,10 @@ local function fetchFromRoblox(keyword, limit)
 	return true, results
 end
 
-local function fetchBackgrounds(player, keyword, limit)
-	keyword = tostring(keyword or DEFAULT_KEYWORD)
-	if keyword == "" then
-		keyword = DEFAULT_KEYWORD
+local function fetchBackgrounds(player, subcategory, limit)
+	subcategory = tostring(subcategory or DEFAULT_SUBCATEGORY)
+	if subcategory == "" then
+		subcategory = DEFAULT_SUBCATEGORY
 	end
 	limit = tonumber(limit) or DEFAULT_LIMIT
 
@@ -222,7 +222,7 @@ local function fetchBackgrounds(player, keyword, limit)
 	end
 
 	task.spawn(function()
-		local success, result, code = fetchFromApi(keyword, limit)
+		local success, result, code = fetchFromApi(subcategory, limit)
 		if code then apiErrorCode = code end
 		trySetWinner("api", success, result)
 	end)

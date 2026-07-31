@@ -317,8 +317,8 @@ local function initialize()
 		ViewportRender.SetupAvatar(player)
 	end
 
-	-- Fetch remote catalog data via server
-	local catalogData, errorCode = invokeGetBackgrounds("background", 28)
+	-- Fetch remote catalog data via server (using Backgrounds subcategory for correct items)
+	local catalogData, errorCode = invokeGetBackgrounds("Backgrounds", 28)
 	if catalogData then
 		print(string.format("[BackgroundCatalog] Catalog received successfully. Items returned: %d", #catalogData))
 	else
