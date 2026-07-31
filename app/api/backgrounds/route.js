@@ -32,15 +32,10 @@ export async function GET(request) {
 
     const data = await response.json();
 
-    console.log(`[API] Data received: ${Array.isArray(data) ? data.length : (data.data ? data.data.length : 'N/A')} items`);
-    console.log(`[API] Data type: ${Array.isArray(data) ? 'Array' : typeof data}`);
-    console.log(`[API] Raw data preview:`, JSON.stringify(data).substring(0, 200));
-
     return NextResponse.json(
       {
         success: true,
-        data: Array.isArray(data) ? data : (data.data || []),
-        debug: { type: Array.isArray(data) ? 'array' : typeof data, hasData: Boolean(data.data) }
+        data: (data && data.data && Array.isArray(data.data)) ? data.data : [],
       },
       {
         status: 200,
