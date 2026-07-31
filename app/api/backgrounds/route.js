@@ -12,6 +12,8 @@ export async function GET(request) {
 
     const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?keyword=${encodeURIComponent(keyword)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;
 
+    console.log(`[API] Fetching: ${robloxUrl}`);
+
     // Request Roblox Catalog API with User-Agent header (required)
     const response = await fetch(robloxUrl, {
       method: 'GET',
@@ -21,12 +23,16 @@ export async function GET(request) {
       },
     });
 
+    console.log(`[API] Response status: ${response.status}`);
+
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Roblox API returned status ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+
+    console.log(`[API] Data received: ${Array.isArray(data) ? data.length : (data.data ? data.data.length : 'N/A')} items`);
 
     return NextResponse.json(
       {
