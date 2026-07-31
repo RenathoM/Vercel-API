@@ -5,11 +5,11 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const subcategory = searchParams.get('subcategory') || 'Backgrounds';
-    const requestedLimit = Number(searchParams.get('limit') || '28');
+    const requestedLimit = Number(searchParams.get('limit') || '10');  // Changed default from 28 to 10
 
     // API only accepts these limits: 10, 28, 30
     const validLimits = [10, 28, 30];
-    const limit = validLimits.includes(requestedLimit) ? requestedLimit : 28;
+    const limit = validLimits.includes(requestedLimit) ? requestedLimit : 10;  // Changed fallback from 28 to 10
 
     // Use subcategory filter instead of keyword to get correct Background category items
     const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?subcategory=${encodeURIComponent(subcategory)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;

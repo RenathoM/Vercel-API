@@ -555,6 +555,10 @@ function UIController.PopulateResults(items: {CatalogService.CatalogItem}): ()
 
 	-- Create cards for each item with entrance animation
 	for index, item in ipairs(items) do
+		if not item or not item.AssetId then
+			warn("[UIController] Skipping invalid item at index " .. index)
+			continue
+		end
 		local card = Instance.new("TextButton")
 		card.Name = "Card_" .. item.AssetId
 		card.Size = UDim2.new(0.5, -5, 0, 100) -- UIGridLayout overrides, but keeps consistency
@@ -638,14 +642,14 @@ function UIController.PopulateResults(items: {CatalogService.CatalogItem}): ()
 
 		-- Hover effect with smooth tween
 		card.MouseEnter:Connect(function()
-			if selectedItem == nil or selectedItem.AssetId ~= item.AssetId then
+			if (selectedItem == nil or selectedItem.AssetId ~= item.AssetId) and item.AssetId then
 				TweenService:Create(card, TWEEN_FAST, {BackgroundColor3 = COLORS.CARD_HOVER}):Play()
 				local s = card:FindFirstChild("CardStroke")
 				if s then TweenService:Create(s, TWEEN_FAST, {Color = Color3.fromRGB(80, 80, 100)}):Play() end
 			end
 		end)
 		card.MouseLeave:Connect(function()
-			if selectedItem == nil or selectedItem.AssetId ~= item.AssetId then
+			if (selectedItem == nil or selectedItem.AssetId ~= item.AssetId) and item.AssetId then
 				TweenService:Create(card, TWEEN_FAST, {BackgroundColor3 = COLORS.CARD_BG}):Play()
 				local s = card:FindFirstChild("CardStroke")
 				if s then TweenService:Create(s, TWEEN_FAST, {Color = COLORS.BORDER}):Play() end
@@ -735,6 +739,7 @@ function UIController.OnCardSelected(item: CatalogService.CatalogItem, card: Tex
 	end
 	if favoritesCounter then
 		-- Generate simulated favorites number based on assetId
+		if not item.AssetId then return end
 		local favs = (item.AssetId % 5000) + 200
 		favoritesCounter.Text = "? Favorites: " .. favs
 	end
@@ -745,7 +750,9 @@ function UIController.OnCardSelected(item: CatalogService.CatalogItem, card: Tex
 	end
 
 	-- Apply background to avatar in viewport (equips on click)
-	ViewportRender.ApplyBackground(item.AssetId, item.ThumbnailUrl)
+	if item.AssetId then
+		ViewportRender.ApplyBackground(item.AssetId, item.ThumbnailUrl)
+	end
 	ViewportRender.FocusOnAvatar()
 end
 
@@ -765,7 +772,7 @@ function UIController.OnBuyClicked(): ()
 	end
 
 	local player = Players.LocalPlayer
-	if player and selectedItem.AssetId > 0 then
+	if player and selectedItem and selectedItem.AssetId and selectedItem.AssetId > 0 then
 		-- Determine asset type correctly
 		local assetType = Enum.InfoType.Asset
 		if selectedItem.AssetTypeId > 0 then
@@ -775,7 +782,9 @@ function UIController.OnBuyClicked(): ()
 			end
 		end
 		local success, err = pcall(function()
-			MarketplaceService:PromptPurchase(player, selectedItem.AssetId)
+			if selectedItem.AssetId then
+				MarketplaceService:PromptPurchase(player, selectedItem.AssetId)
+			end
 		end)
 		if not success then
 			warn("[BackgroundCatalog] Error opening purchase: " .. tostring(err))
@@ -785,7 +794,7 @@ end
 
 -- Manipula o clique no botao Report
 function UIController.OnReportClicked(): ()
-	if not selectedItem then return end
+	if not selectedItem or not selectedItem.AssetId then return end
 
 	-- Feedback visual
 	if reportButton then
@@ -799,6 +808,7 @@ function UIController.OnReportClicked(): ()
 
 	-- Open asset report page in browser
 	local assetId = selectedItem.AssetId
+
 	local player = Players.LocalPlayer
 	if player and assetId > 0 then
 		-- Use Roblox's built-in report system

@@ -318,7 +318,7 @@ local function initialize()
 	end
 
 	-- Fetch remote catalog data via server (using Backgrounds subcategory for correct items)
-	local catalogData, errorCode = invokeGetBackgrounds("Backgrounds", 28)
+	local catalogData, errorCode = invokeGetBackgrounds("Backgrounds", 10)  -- Changed from 28 to 10
 	if catalogData then
 		print(string.format("[BackgroundCatalog] Catalog received successfully. Items returned: %d", #catalogData))
 	else

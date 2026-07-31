@@ -18,7 +18,7 @@ local AvatarEditorService = game:GetService("AvatarEditorService")
 -- Constants
 local API_BASE_URL = "https://vercel-api-one-red.vercel.app/api/backgrounds"
 local DEFAULT_SUBCATEGORY = "Backgrounds"
-local DEFAULT_LIMIT = 28
+local DEFAULT_LIMIT = 10  -- Changed from 28 to 10 (only ~13 backgrounds exist in catalog)
 local AVATAR_BACKGROUND_ASSET_TYPE_ID = 92
 local BACKGROUND_TYPE_STRINGS = {
 	"AvatarBackground",
@@ -60,15 +60,17 @@ local function isBackgroundAssetType(assetTypeValue)
 end
 
 local function buildRobloxCatalogItem(item)
+	-- Map API fields to expected Lua structure
+	-- API returns: id, name, price, creatorName, description, priceStatus, etc.
 	return {
-		AssetId = item.Id or 0,
-		Name = item.Name or "No name",
-		CreatorName = item.CreatorName or "Unknown",
-		Price = item.Price or 0,
-		ReleaseDate = item.ReleaseDate or item.Created or "---",
-		Description = item.Description or "No description",
-		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%d&w=420&h=420", item.Id or 0),
-		AssetTypeId = item.AssetTypeId or AVATAR_BACKGROUND_ASSET_TYPE_ID,
+		AssetId = item.id or 0,  -- API uses 'id', not 'Id'
+		Name = item.name or "No name",  -- API uses 'name' (lowercase)
+		CreatorName = item.creatorName or "Unknown",
+		Price = item.price or 0,  -- API uses 'price' (lowercase)
+		ReleaseDate = item.releaseDate or item.created or "---",
+		Description = item.description or "No description",
+		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%d&w=420&h=420", item.id or 0),
+		AssetTypeId = item.assetTypeId or AVATAR_BACKGROUND_ASSET_TYPE_ID,
 	}
 end
 
@@ -228,7 +230,7 @@ local function fetchBackgrounds(player, subcategory, limit)
 	end)
 
 	task.spawn(function()
-		local success, result, code = fetchFromRoblox(keyword, limit)
+		local success, result, code = fetchFromRoblox(subcategory, limit)  -- Changed from 'keyword' to 'subcategory'
 		if code then robloxErrorCode = code end
 		trySetWinner("roblox", success, result)
 	end)
