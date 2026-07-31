@@ -3,13 +3,14 @@ import { NextResponse } from 'next/server';
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const keyword = searchParams.get('keyword') || 'Profile Background';
-    const requestedLimit = Number(searchParams.get('limit') || '10');
+    const keyword = searchParams.get('keyword') || 'background';
+    const requestedLimit = Number(searchParams.get('limit') || '28');
 
-    const validLimits = [10, 28, 30, 50, 60, 100, 120];
-    const limit = validLimits.includes(requestedLimit) ? requestedLimit : 10;
+    // API only accepts these limits: 10, 28, 30
+    const validLimits = [10, 28, 30];
+    const limit = validLimits.includes(requestedLimit) ? requestedLimit : 28;
 
-    const robloxUrl = `https://catalog.roblox.com/v1/search/items?category=Accessories&keyword=${encodeURIComponent(keyword)}&limit=${limit}`;
+    const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?keyword=${encodeURIComponent(keyword)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;
 
     const response = await fetch(robloxUrl, {
       method: 'GET',
