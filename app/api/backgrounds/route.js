@@ -29,7 +29,7 @@ export async function GET(request) {
     return NextResponse.json(
       {
         success: true,
-        data: Array.isArray(data?.data) ? data.data : data?.data || [],
+        data: Array.isArray(data) ? data : [],
       },
       {
         status: 200,
