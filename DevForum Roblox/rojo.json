@@ -1,0 +1,10 @@
+{
+  "name": "BlocksProject",
+  "servePort": 34872,
+  "partitions": {
+    "src": {
+      "path": "src",
+      "target": "ReplicatedStorage"
+    }
+  }
+}
