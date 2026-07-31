@@ -739,10 +739,23 @@ function UIController.OnCardSelected(item: CatalogService.CatalogItem, card: Tex
 		end
 	end
 	if favoritesCounter then
-		-- Generate simulated favorites number based on assetId
+		-- Use real favorites count from the API; fall back to "---" if unavailable
 		if not item.AssetId then return end
-		local favs = (item.AssetId % 5000) + 200
-		favoritesCounter.Text = "? Favorites: " .. favs
+		local favs = item.FavoriteCount
+		if type(favs) == "number" and favs > 0 then
+			-- Format large numbers: 1234 → 1,234 | 12345 → 12.3k | 1234567 → 1.2M
+			local formatted
+			if favs >= 1000000 then
+				formatted = string.format("%.1fM", favs / 1000000)
+			elseif favs >= 10000 then
+				formatted = string.format("%.1fk", favs / 1000)
+			else
+				formatted = tostring(favs)
+			end
+			favoritesCounter.Text = "❤ Favorites: " .. formatted
+		else
+			favoritesCounter.Text = "❤ Favorites: ---"
+		end
 	end
 	if descriptionLabel then
 		local desc = item.Description or "No Description"

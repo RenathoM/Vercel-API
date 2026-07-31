@@ -46,17 +46,29 @@ async function collectCandidateIds() {
 
 /**
  * Validates a single asset ID against the Roblox economy API.
+ * Also fetches the real favorites count from the catalog favorites endpoint.
  * Returns the formatted item if it is a confirmed background (AssetTypeId=92),
  * or null if it is not a background or if the request fails.
  */
 async function validateBackground(id) {
   try {
-    const resp = await fetch(`https://economy.roblox.com/v2/assets/${id}/details`, {
-      headers: HEADERS,
-    });
-    if (!resp.ok) return null;
-    const d = await resp.json();
+    // Fetch economy details and favorites count in parallel
+    const [detailResp, favResp] = await Promise.all([
+      fetch(`https://economy.roblox.com/v2/assets/${id}/details`, { headers: HEADERS }),
+      fetch(`https://catalog.roblox.com/v1/favorites/assets/${id}/count`, { headers: HEADERS }),
+    ]);
+
+    if (!detailResp.ok) return null;
+    const d = await detailResp.json();
     if (d.AssetTypeId !== 92) return null;
+
+    // favorites endpoint returns a plain number
+    let favoriteCount = 0;
+    if (favResp.ok) {
+      const favData = await favResp.json();
+      favoriteCount = typeof favData === 'number' ? favData : 0;
+    }
+
     return {
       id,
       name: d.Name || 'Background',
@@ -65,6 +77,7 @@ async function validateBackground(id) {
       description: d.Description || '',
       assetTypeId: 92,
       priceStatus: d.IsForSale ? 'ForSale' : 'NotForSale',
+      favoriteCount,
     };
   } catch {
     return null;

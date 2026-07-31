@@ -37,9 +37,9 @@ local ERROR_CODES = {
 local USE_TEST_BACKGROUNDS = false
 
 local TEST_BACKGROUNDS = {
-	{ AssetId=121199209890990, Name="Prism Skies",    CreatorName="Roblox", Price=0,   ReleaseDate="---", Description="Prism Skies background.",  ThumbnailUrl="rbxthumb://type=Asset&id=121199209890990&w=420&h=420", AssetTypeId=92 },
-	{ AssetId=101873719747781, Name="Stargazer",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Stargazer background.",     ThumbnailUrl="rbxthumb://type=Asset&id=101873719747781&w=420&h=420", AssetTypeId=92 },
-	{ AssetId=91937715974752,  Name="Soundwave",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Soundwave background.",     ThumbnailUrl="rbxthumb://type=Asset&id=91937715974752&w=420&h=420",  AssetTypeId=92 },
+	{ AssetId=121199209890990, Name="Prism Skies",    CreatorName="Roblox", Price=0,   ReleaseDate="---", Description="Prism Skies background.",  FavoriteCount=48409, ThumbnailUrl="rbxthumb://type=Asset&id=121199209890990&w=420&h=420", AssetTypeId=92 },
+	{ AssetId=101873719747781, Name="Stargazer",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Stargazer background.",     FavoriteCount=8864,  ThumbnailUrl="rbxthumb://type=Asset&id=101873719747781&w=420&h=420", AssetTypeId=92 },
+	{ AssetId=91937715974752,  Name="Soundwave",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Soundwave background.",     FavoriteCount=0,     ThumbnailUrl="rbxthumb://type=Asset&id=91937715974752&w=420&h=420",  AssetTypeId=92 },
 }
 
 -- Converts a raw item table (either from the Vercel API or AvatarEditorService)
@@ -47,14 +47,15 @@ local TEST_BACKGROUNDS = {
 local function buildItem(item)
 	local id = item.id or item.Id or item.AssetId or 0
 	return {
-		AssetId      = id,
-		Name         = item.name       or item.Name        or "No name",
-		CreatorName  = item.creatorName or item.CreatorName or "Unknown",
-		Price        = item.price       or item.Price       or 0,
-		ReleaseDate  = item.releaseDate or item.ReleaseDate or "---",
-		Description  = item.description or item.Description or "No description",
-		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%.0f&w=420&h=420", id),
-		AssetTypeId  = AVATAR_BACKGROUND_ASSET_TYPE_ID,
+		AssetId       = id,
+		Name          = item.name          or item.Name          or "No name",
+		CreatorName   = item.creatorName   or item.CreatorName   or "Unknown",
+		Price         = item.price         or item.Price         or 0,
+		ReleaseDate   = item.releaseDate   or item.ReleaseDate   or "---",
+		Description   = item.description   or item.Description   or "No description",
+		FavoriteCount = item.favoriteCount or item.FavoriteCount or 0,
+		ThumbnailUrl  = string.format("rbxthumb://type=Asset&id=%.0f&w=420&h=420", id),
+		AssetTypeId   = AVATAR_BACKGROUND_ASSET_TYPE_ID,
 	}
 end
 
