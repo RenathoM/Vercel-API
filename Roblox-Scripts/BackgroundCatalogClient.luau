@@ -54,13 +54,11 @@ end
 	Error code descriptions for the popup system
 ]]
 local ERROR_DESCRIPTIONS = {
-	["021"] = "Both search systems failed (HttpService + MarketplaceService)",
+	["021"] = "All catalog sources failed (API + AvatarEditorService)",
 	["022"] = "External API returned no response (timeout / connection)",
-	["023"] = "MarketplaceService search outdated or invalid data",
 	["024"] = "Server unreachable (RemoteFunction invocation failed)",
 	["025"] = "HttpService is disabled on the server",
 	["026"] = "API returned invalid/unexpected data format",
-	["027"] = "Roblox catalog search (AvatarEditorService) failed",
 }
 
 --[[
@@ -230,14 +228,14 @@ local function showErrorAndRejoin(errorCode: string?)
 	end)
 end
 
-local function invokeGetBackgrounds(keyword, limit)
+local function invokeGetBackgrounds()
 	if not getBackgroundsRF or not getBackgroundsRF:IsA("RemoteFunction") then
 		warn("[BackgroundCatalog] GetBackgroundsRF not found or not a RemoteFunction.")
 		return nil, "024"
 	end
 
 	local success, response = pcall(function()
-		return getBackgroundsRF:InvokeServer(keyword or "Profile Background", limit or 10)
+		return getBackgroundsRF:InvokeServer()
 	end)
 
 	if not success then
@@ -317,8 +315,8 @@ local function initialize()
 		ViewportRender.SetupAvatar(player)
 	end
 
-	-- Fetch remote catalog data via server (using Backgrounds subcategory for correct items)
-	local catalogData, errorCode = invokeGetBackgrounds("Backgrounds", 10)  -- Changed from 28 to 10
+	-- Fetch catalog data from server (auto-discovers backgrounds via API + AvatarEditorService)
+	local catalogData, errorCode = invokeGetBackgrounds()
 	if catalogData then
 		print(string.format("[BackgroundCatalog] Catalog received successfully. Items returned: %d", #catalogData))
 	else

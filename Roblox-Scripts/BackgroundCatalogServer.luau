@@ -1,14 +1,222 @@
 --[[
 	Server Script: BackgroundCatalogServer
 	Location: ServerScriptService
-	Purpose: Fetches confirmed background items from the Vercel API and returns
-	them to the client via RemoteFunction (GetBackgroundsRF).
 
-	The Vercel API handles all catalog discovery and validation server-side:
-	  - Auto-discovers backgrounds via Roblox catalog + economy API (AssetTypeId=92)
-	  - Caches results for 24h on the CDN
-	No MarketplaceService, AvatarEditorService or CatalogSearchParams needed here.
+	Discovery strategy (both run in parallel, results merged):
+	  1. Vercel API   — fetches confirmed backgrounds (AssetTypeId=92) with 24h cache.
+	                    Covers all backgrounds discoverable via the public Roblox API.
+	  2. AvatarEditorService — in-game catalog search with server authentication context.
+	                    May surface additional backgrounds not visible via public API.
+
+	No MarketplaceService required. The server returns the union of both sources,
+	deduplicated by AssetId, so the ResultsGrid always gets the most complete list.
 ]]
+
+local HttpService        = game:GetService("HttpService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local AvatarEditorService = game:GetService("AvatarEditorService")
+
+-- Vercel API endpoint (validates AssetTypeId=92, 24h CDN cache)
+local API_URL      = "https://vercel-api-one-red.vercel.app/api/backgrounds"
+local MAX_RETRIES  = 3
+local RETRY_DELAY  = 2
+
+local AVATAR_BACKGROUND_ASSET_TYPE_ID = 92
+
+local ERROR_CODES = {
+	BOTH_SYSTEMS_FAILED      = "021",
+	API_NO_RESPONSE          = "022",
+	REMOTE_INVOCATION_FAILED = "024",
+	HTTP_DISABLED            = "025",
+	API_INVALID_DATA         = "026",
+}
+
+-- =============================================================================
+-- TEST MODE  (set true to skip network and return hardcoded items)
+-- =============================================================================
+local USE_TEST_BACKGROUNDS = false
+
+local TEST_BACKGROUNDS = {
+	{ AssetId=121199209890990, Name="Prism Skies",    CreatorName="Roblox", Price=0,   ReleaseDate="---", Description="Prism Skies background.",  ThumbnailUrl="rbxthumb://type=Asset&id=121199209890990&w=420&h=420", AssetTypeId=92 },
+	{ AssetId=101873719747781, Name="Stargazer",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Stargazer background.",     ThumbnailUrl="rbxthumb://type=Asset&id=101873719747781&w=420&h=420", AssetTypeId=92 },
+	{ AssetId=91937715974752,  Name="Soundwave",      CreatorName="Roblox", Price=200, ReleaseDate="---", Description="Soundwave background.",     ThumbnailUrl="rbxthumb://type=Asset&id=91937715974752&w=420&h=420",  AssetTypeId=92 },
+}
+
+-- Converts a raw item table (either from the Vercel API or AvatarEditorService)
+-- to the unified structure expected by the Roblox client scripts.
+local function buildItem(item)
+	local id = item.id or item.Id or item.AssetId or 0
+	return {
+		AssetId      = id,
+		Name         = item.name       or item.Name        or "No name",
+		CreatorName  = item.creatorName or item.CreatorName or "Unknown",
+		Price        = item.price       or item.Price       or 0,
+		ReleaseDate  = item.releaseDate or item.ReleaseDate or "---",
+		Description  = item.description or item.Description or "No description",
+		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%.0f&w=420&h=420", id),
+		AssetTypeId  = AVATAR_BACKGROUND_ASSET_TYPE_ID,
+	}
+end
+
+-- ─── Source 1: Vercel API ────────────────────────────────────────────────────
+-- Returns items already validated as AssetTypeId=92. Results are CDN-cached.
+local function fetchFromApi()
+	if not HttpService.HttpEnabled then
+		return false, nil, ERROR_CODES.HTTP_DISABLED
+	end
+
+	local ok, result
+	for attempt = 1, MAX_RETRIES do
+		ok, result = pcall(function() return HttpService:GetAsync(API_URL) end)
+		if ok then break end
+		warn(string.format("[BackgroundCatalogServer] API attempt %d/%d: %s", attempt, MAX_RETRIES, tostring(result)))
+		if attempt < MAX_RETRIES then task.wait(RETRY_DELAY) end
+	end
+
+	if not ok then return false, nil, ERROR_CODES.API_NO_RESPONSE end
+
+	local decodeOk, decoded = pcall(function() return HttpService:JSONDecode(result) end)
+	if not decodeOk or type(decoded) ~= "table" or not decoded.success or not decoded.data then
+		return false, nil, ERROR_CODES.API_INVALID_DATA
+	end
+
+	local items = {}
+	for _, item in ipairs(decoded.data) do
+		table.insert(items, buildItem(item))
+	end
+	return true, items, nil
+end
+
+-- ─── Source 2: AvatarEditorService ──────────────────────────────────────────
+-- In-game catalog search. Runs with server authentication context and may surface
+-- backgrounds not accessible via the public Roblox API (the remaining 7-17 items).
+-- Results are filtered to AssetTypeId=92 to guarantee only backgrounds are returned.
+local function fetchFromAvatarEditor()
+	local searchParams = CatalogSearchParams.new()
+	searchParams.SearchKeyword   = ""
+	searchParams.SortType        = Enum.CatalogSortType.Relevance
+	searchParams.CategoryFilter  = Enum.CatalogCategoryFilter.None
+	searchParams.IncludeOffSale  = true   -- include non-purchasable backgrounds
+	-- Note: AssetTypes cannot specify AssetTypeId=92 via enum; we filter manually below
+
+	local ok, pages = pcall(function()
+		return AvatarEditorService:SearchCatalogAsync(searchParams)
+	end)
+	if not ok or not pages then return {} end
+
+	local results = {}
+	local seen = {}
+
+	-- Walk through available pages (up to 3 to limit latency)
+	for _ = 1, 3 do
+		local pageOk, pageItems = pcall(function() return pages:GetCurrentPage() end)
+		if not pageOk or not pageItems then break end
+
+		for _, item in ipairs(pageItems) do
+			local assetTypeId = item.AssetTypeId or (item.AssetType and item.AssetType.Value)
+			if assetTypeId == AVATAR_BACKGROUND_ASSET_TYPE_ID then
+				local id = item.Id or item.AssetId or 0
+				if id > 0 and not seen[id] then
+					seen[id] = true
+					table.insert(results, buildItem(item))
+				end
+			end
+		end
+
+		if pages.IsFinished then break end
+		local nextOk = pcall(function() pages:AdvanceToNextPageAsync() end)
+		if not nextOk then break end
+	end
+
+	if #results > 0 then
+		print(string.format("[BackgroundCatalogServer] AvatarEditorService found %d background(s).", #results))
+	end
+	return results
+end
+
+-- ─── Main handler ────────────────────────────────────────────────────────────
+-- Called by the client via GetBackgroundsRF:InvokeServer().
+-- Runs both sources in parallel and returns the merged, deduplicated result.
+local function fetchBackgrounds(player)
+	if USE_TEST_BACKGROUNDS then
+		print("[BackgroundCatalogServer] TEST MODE: returning hardcoded backgrounds")
+		return { success = true, data = TEST_BACKGROUNDS }
+	end
+
+	-- Run both sources concurrently
+	local apiItems, avatarItems = nil, nil
+	local apiErrorCode = nil
+
+	task.spawn(function()
+		local ok, items, code = fetchFromApi()
+		apiItems = ok and items or nil
+		apiErrorCode = code
+	end)
+
+	task.spawn(function()
+		local ok, result = pcall(fetchFromAvatarEditor)
+		avatarItems = (ok and result) or {}
+	end)
+
+	-- Wait for both (max 15s)
+	local waited = 0
+	while (apiItems == nil or avatarItems == nil) and waited < 15 do
+		task.wait(0.1)
+		waited = waited + 0.1
+	end
+
+	-- Merge and deduplicate by AssetId
+	local merged = {}
+	local seen   = {}
+
+	local function addItems(list)
+		if not list then return end
+		for _, item in ipairs(list) do
+			local id = item.AssetId
+			if id and id > 0 and not seen[id] then
+				seen[id] = true
+				table.insert(merged, item)
+			end
+		end
+	end
+
+	addItems(apiItems)
+	addItems(avatarItems)
+
+	if #merged > 0 then
+		print(string.format("[BackgroundCatalogServer] Returning %d backgrounds (API=%s, AvatarEditor=%s).",
+			#merged,
+			tostring(apiItems and #apiItems or 0),
+			tostring(avatarItems and #avatarItems or 0)
+		))
+		return { success = true, data = merged }
+	end
+
+	warn("[BackgroundCatalogServer] All sources failed.")
+	return {
+		success   = false,
+		error     = "No backgrounds found from any source.",
+		errorCode = apiErrorCode or ERROR_CODES.BOTH_SYSTEMS_FAILED,
+	}
+end
+
+-- =============================================================================
+-- Initialisation
+-- =============================================================================
+local getBackgroundsRF = ReplicatedStorage:FindFirstChild("GetBackgroundsRF")
+if not getBackgroundsRF then
+	warn("[BackgroundCatalogServer] GetBackgroundsRF not found in ReplicatedStorage!")
+	return
+end
+
+if getBackgroundsRF:GetAttribute("HandlerVersion") == 2 then
+	warn("[BackgroundCatalogServer] Duplicate script detected — aborting. Remove old copies from ServerScriptService.")
+	return
+end
+getBackgroundsRF:SetAttribute("HandlerVersion", 2)
+getBackgroundsRF.OnServerInvoke = fetchBackgrounds
+
+print("[BackgroundCatalogServer] Ready. Listening for client requests via GetBackgroundsRF.")
 
 local HttpService    = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
