@@ -1,19 +1,163 @@
 --[[
 	Server Script: BackgroundCatalogServer
 	Location: ServerScriptService
-	Purpose: Handles HTTP requests to the proxy API and returns
-	background catalog data to the client via RemoteFunction.
+	Purpose: Fetches confirmed background items from the Vercel API and returns
+	them to the client via RemoteFunction (GetBackgroundsRF).
 
-	Architecture:
-		- Client invokes GetBackgroundsRF with (keyword, limit)
-		- Server formats the URL, makes the HTTP GET request
-		- Server decodes JSON and returns the 'data' table
-		- Errors are caught with pcall and returned gracefully
+	The Vercel API handles all catalog discovery and validation server-side:
+	  - Auto-discovers backgrounds via Roblox catalog + economy API (AssetTypeId=92)
+	  - Caches results for 24h on the CDN
+	No MarketplaceService, AvatarEditorService or CatalogSearchParams needed here.
 ]]
 
-local HttpService = game:GetService("HttpService")
+local HttpService    = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local AvatarEditorService = game:GetService("AvatarEditorService")
+
+-- API endpoint (handles discovery + validation of AssetTypeId=92 backgrounds)
+local API_URL = "https://vercel-api-one-red.vercel.app/api/backgrounds"
+
+-- Retry settings for the HTTP request
+local MAX_RETRIES  = 3
+local RETRY_DELAY  = 2  -- seconds
+
+-- Error codes returned to the client
+local ERROR_CODES = {
+	BOTH_SYSTEMS_FAILED      = "021",
+	API_NO_RESPONSE          = "022",
+	REMOTE_INVOCATION_FAILED = "024",
+	HTTP_DISABLED            = "025",
+	API_INVALID_DATA         = "026",
+}
+
+-- =============================================================================
+-- TEST MODE
+-- Set to true to bypass the API and return hardcoded backgrounds.
+-- Useful for verifying UI/viewport without a network request.
+-- =============================================================================
+local USE_TEST_BACKGROUNDS = false  -- false = usa a Vercel API; true = usa TEST_BACKGROUNDS hardcoded
+
+local TEST_BACKGROUNDS = {
+	{
+		AssetId     = 121199209890990,
+		Name        = "Prism Skies",
+		CreatorName = "Roblox",
+		Price       = 0,
+		ReleaseDate = "---",
+		Description = "Prism Skies background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=121199209890990&w=420&h=420",
+		AssetTypeId = 92,
+	},
+	{
+		AssetId     = 101873719747781,
+		Name        = "Stargazer",
+		CreatorName = "Roblox",
+		Price       = 200,
+		ReleaseDate = "---",
+		Description = "Stargazer background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=101873719747781&w=420&h=420",
+		AssetTypeId = 92,
+	},
+	{
+		AssetId     = 91937715974752,
+		Name        = "Soundwave",
+		CreatorName = "Roblox",
+		Price       = 200,
+		ReleaseDate = "---",
+		Description = "Soundwave background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=91937715974752&w=420&h=420",
+		AssetTypeId = 92,
+	},
+}
+
+-- Maps a raw API item (lowercase fields from economy API) to the structure
+-- expected by the Roblox client scripts.
+local function buildItem(item)
+	return {
+		AssetId      = item.id or 0,
+		Name         = item.name or "No name",
+		CreatorName  = item.creatorName or "Unknown",
+		Price        = item.price or 0,
+		ReleaseDate  = item.releaseDate or "---",
+		Description  = item.description or "No description",
+		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%.0f&w=420&h=420", item.id or 0),
+		AssetTypeId  = item.assetTypeId or 92,
+	}
+end
+
+-- Makes an HTTP GET request to the Vercel API with retries.
+-- Returns: success (bool), items ({table}) or errorCode (string)
+local function fetchFromApi()
+	if not HttpService.HttpEnabled then
+		return false, nil, ERROR_CODES.HTTP_DISABLED
+	end
+
+	local ok, result
+	for attempt = 1, MAX_RETRIES do
+		ok, result = pcall(function()
+			return HttpService:GetAsync(API_URL)
+		end)
+		if ok then break end
+		warn(string.format("[BackgroundCatalogServer] Attempt %d/%d failed: %s", attempt, MAX_RETRIES, tostring(result)))
+		if attempt < MAX_RETRIES then task.wait(RETRY_DELAY) end
+	end
+
+	if not ok then
+		return false, nil, ERROR_CODES.API_NO_RESPONSE
+	end
+
+	local decodeOk, decoded = pcall(function() return HttpService:JSONDecode(result) end)
+	if not decodeOk or type(decoded) ~= "table" then
+		return false, nil, ERROR_CODES.API_INVALID_DATA
+	end
+
+	if not decoded.success or not decoded.data then
+		return false, nil, ERROR_CODES.API_INVALID_DATA
+	end
+
+	local items = {}
+	for _, item in ipairs(decoded.data) do
+		table.insert(items, buildItem(item))
+	end
+
+	return true, items, nil
+end
+
+-- RemoteFunction handler — called by the client via GetBackgroundsRF:InvokeServer()
+local function fetchBackgrounds(player)
+	if USE_TEST_BACKGROUNDS then
+		print("[BackgroundCatalogServer] TEST MODE: returning hardcoded backgrounds")
+		return { success = true, data = TEST_BACKGROUNDS }
+	end
+
+	local ok, items, errorCode = fetchFromApi()
+
+	if ok then
+		print(string.format("[BackgroundCatalogServer] API returned %d backgrounds.", #items))
+		return { success = true, data = items }
+	end
+
+	warn("[BackgroundCatalogServer] API failed, errorCode=" .. tostring(errorCode))
+	return { success = false, error = "API unavailable", errorCode = errorCode or ERROR_CODES.BOTH_SYSTEMS_FAILED }
+end
+
+-- =============================================================================
+-- Initialisation
+-- =============================================================================
+local getBackgroundsRF = ReplicatedStorage:FindFirstChild("GetBackgroundsRF")
+if not getBackgroundsRF then
+	warn("[BackgroundCatalogServer] GetBackgroundsRF not found in ReplicatedStorage!")
+	return
+end
+
+-- Guard against duplicate scripts overwriting the handler
+if getBackgroundsRF:GetAttribute("HandlerVersion") == 2 then
+	warn("[BackgroundCatalogServer] Duplicate script detected — aborting. Remove old copies from ServerScriptService.")
+	return
+end
+getBackgroundsRF:SetAttribute("HandlerVersion", 2)
+getBackgroundsRF.OnServerInvoke = fetchBackgrounds
+
+print("[BackgroundCatalogServer] Ready. Listening for client requests via GetBackgroundsRF.")
 
 -- Constants
 local API_BASE_URL = "https://vercel-api-one-red.vercel.app/api/backgrounds"
