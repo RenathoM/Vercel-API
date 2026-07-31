@@ -616,7 +616,8 @@ function UIController.PopulateResults(items: {CatalogService.CatalogItem}): ()
 		priceLabel.Position = UDim2.new(0.6, 0, 0.7, 0)
 		priceLabel.BackgroundTransparency = 1
 		priceLabel.TextColor3 = Color3.fromRGB(0, 200, 100)
-		priceLabel.Text = item.Price > 0 and ("💰" .. item.Price) or "Free"
+		local price = item.Price or 0
+		priceLabel.Text = price > 0 and ("💰" .. tostring(price)) or "Free"
 		priceLabel.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 		priceLabel.TextSize = 9
 		priceLabel.TextXAlignment = Enum.TextXAlignment.Right
