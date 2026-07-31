@@ -18,8 +18,45 @@ local AvatarEditorService = game:GetService("AvatarEditorService")
 -- Constants
 local API_BASE_URL = "https://vercel-api-one-red.vercel.app/api/backgrounds"
 local DEFAULT_SUBCATEGORY = "Backgrounds"
-local DEFAULT_LIMIT = 10  -- Changed from 28 to 10 (only ~13 backgrounds exist in catalog)
+local DEFAULT_LIMIT = 10
 local AVATAR_BACKGROUND_ASSET_TYPE_ID = 92
+
+-- =============================================================================
+-- TEST MODE: Set USE_TEST_BACKGROUNDS = true to bypass the API and use the
+-- hardcoded backgrounds below. Useful to verify the viewport 3D display works.
+-- Set to false for production (uses the Vercel API).
+-- =============================================================================
+local USE_TEST_BACKGROUNDS = true
+
+local TEST_BACKGROUNDS = {
+	{
+		AssetId      = 121199209890990,
+		Name         = "Prism Skies",
+		CreatorName  = "Roblox",
+		Price        = 0,
+		Description  = "Prism Skies background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=121199209890990&w=420&h=420",
+		AssetTypeId  = 92,
+	},
+	{
+		AssetId      = 101873719747781,
+		Name         = "Stargazer",
+		CreatorName  = "Roblox",
+		Price        = 200,
+		Description  = "Stargazer background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=101873719747781&w=420&h=420",
+		AssetTypeId  = 92,
+	},
+	{
+		AssetId      = 91937715974752,
+		Name         = "Soundwave",
+		CreatorName  = "Roblox",
+		Price        = 200,
+		Description  = "Soundwave background.",
+		ThumbnailUrl = "rbxthumb://type=Asset&id=91937715974752&w=420&h=420",
+		AssetTypeId  = 92,
+	},
+}
 local BACKGROUND_TYPE_STRINGS = {
 	"AvatarBackground",
 	"Background",
@@ -139,7 +176,12 @@ local function fetchFromApi(subcategory, limit)
 			return false, decoded.error or "API returned an error payload", ERROR_CODES.API_INVALID_DATA
 		end
 		if decoded.data ~= nil then
-			return true, decoded.data
+			-- Map raw API fields (lowercase) to the expected Lua structure
+			local mappedItems = {}
+			for _, item in ipairs(decoded.data) do
+				table.insert(mappedItems, buildRobloxCatalogItem(item))
+			end
+			return true, mappedItems
 		end
 		return true, decoded
 	end
@@ -194,6 +236,12 @@ local function fetchBackgrounds(player, subcategory, limit)
 		subcategory = DEFAULT_SUBCATEGORY
 	end
 	limit = tonumber(limit) or DEFAULT_LIMIT
+
+	-- TEST MODE: return hardcoded backgrounds to verify 3D viewport display
+	if USE_TEST_BACKGROUNDS then
+		print("[BackgroundCatalogServer] TEST MODE: returning hardcoded backgrounds")
+		return { success = true, data = TEST_BACKGROUNDS }
+	end
 
 	if not HttpService.HttpEnabled then
 		return {

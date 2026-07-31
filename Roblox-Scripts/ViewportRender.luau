@@ -18,7 +18,7 @@ local viewportFrame: ViewportFrame
 local worldModel: WorldModel
 local viewportCamera: Camera
 local characterClone: Model?
-local backgroundImageLabel: ImageLabel?
+local stagePlane: Part?          -- 3D backdrop Part inside WorldModel
 local isInitialized: boolean = false
 local viewportChangedConnection: RBXScriptConnection?
 
@@ -56,148 +56,28 @@ function ViewportRender.Initialize(viewport: ViewportFrame): ()
 	viewport.LightColor = Color3.fromRGB(255, 255, 255)
 	viewport.LightDirection = Vector3.new(-1, -1, -1)
 
-	-- Tornar o fundo do viewport transparente para que o ImageLabel atras seja visivel
-	viewport.BackgroundTransparency = 1
+-- Fundo solido escuro para o viewport (o StagePlane 3D sera o background visual)
+	viewport.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	viewport.BackgroundTransparency = 0
 
-	-- Criar ImageLabel atras da ViewportFrame para exibir o fundo
-	-- Decals e SurfaceGuis NAO funcionam bem em ViewportFrames, entao usamos
-	-- um ImageLabel 2D atras do viewport transparente como fundo
-	local parent = viewport.Parent
-	if parent then
-		backgroundImageLabel = parent:FindFirstChild("BackgroundImage") :: ImageLabel
-		if not backgroundImageLabel then
-			backgroundImageLabel = Instance.new("ImageLabel")
-			backgroundImageLabel.Name = "BackgroundImage"
-			-- Match the viewport's layout dynamically (recognized by script, not hardcoded)
-			backgroundImageLabel.Size = viewport.Size
-			backgroundImageLabel.Position = viewport.Position
-			backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
-			backgroundImageLabel.BackgroundColor3 = parent.BackgroundColor3
-			backgroundImageLabel.BackgroundTransparency = 0
-			backgroundImageLabel.Image = ""
-			backgroundImageLabel.ImageTransparency = 1
-			backgroundImageLabel.ScaleType = Enum.ScaleType.Crop
-			backgroundImageLabel.BorderSizePixel = 0
-			backgroundImageLabel.ZIndex = math.max(0, viewport.ZIndex - 1)
-			backgroundImageLabel.ClipsDescendants = true
-			backgroundImageLabel.Parent = parent
-
-			-- Copy UICorner from viewport so the background image matches the rounded shape
-			local vpCorner = viewport:FindFirstChildOfClass("UICorner")
-			if vpCorner then
-				local bgCorner = Instance.new("UICorner")
-				bgCorner.CornerRadius = vpCorner.CornerRadius
-				bgCorner.Parent = backgroundImageLabel
-			end
-
-			-- Copy UIStroke from viewport for consistent border
-			local vpStroke = viewport:FindFirstChildOfClass("UIStroke")
-			if vpStroke then
-				local bgStroke = Instance.new("UIStroke")
-				bgStroke.Color = vpStroke.Color
-				bgStroke.Thickness = vpStroke.Thickness
-				bgStroke.Transparency = vpStroke.Transparency
-				bgStroke.ApplyStrokeMode = vpStroke.ApplyStrokeMode
-				bgStroke.Parent = backgroundImageLabel
-			end
-
-			-- Create edge gradient overlays for smooth transition from image to background
-			-- These fade from the parent's background color (opaque at edges) to transparent (toward center)
-			-- giving a soft vignette blend regardless of image orientation (horizontal or vertical)
-			local gradientColor = parent.BackgroundColor3
-			local fadeSize = 80 -- pixels of gradient fade at each edge
-
-			-- Top edge fade
-			local topFade = Instance.new("Frame")
-			topFade.Name = "TopFade"
-			topFade.Size = UDim2.new(1, 0, 0, fadeSize)
-			topFade.Position = UDim2.new(0, 0, 0, 0)
-			topFade.BackgroundColor3 = gradientColor
-			topFade.BackgroundTransparency = 0
-			topFade.BorderSizePixel = 0
-			topFade.ZIndex = 1
-			topFade.Parent = backgroundImageLabel
-			local topGrad = Instance.new("UIGradient")
-			topGrad.Rotation = 90
-			topGrad.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0),
-				NumberSequenceKeypoint.new(1, 1),
-			})
-			topGrad.Parent = topFade
-
-			-- Bottom edge fade
-			local bottomFade = Instance.new("Frame")
-			bottomFade.Name = "BottomFade"
-			bottomFade.Size = UDim2.new(1, 0, 0, fadeSize)
-			bottomFade.Position = UDim2.new(0, 0, 1, -fadeSize)
-			bottomFade.BackgroundColor3 = gradientColor
-			bottomFade.BackgroundTransparency = 0
-			bottomFade.BorderSizePixel = 0
-			bottomFade.ZIndex = 1
-			bottomFade.Parent = backgroundImageLabel
-			local bottomGrad = Instance.new("UIGradient")
-			bottomGrad.Rotation = 90
-			bottomGrad.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0),
-			})
-			bottomGrad.Parent = bottomFade
-
-			-- Left edge fade
-			local leftFade = Instance.new("Frame")
-			leftFade.Name = "LeftFade"
-			leftFade.Size = UDim2.new(0, fadeSize, 1, 0)
-			leftFade.Position = UDim2.new(0, 0, 0, 0)
-			leftFade.BackgroundColor3 = gradientColor
-			leftFade.BackgroundTransparency = 0
-			leftFade.BorderSizePixel = 0
-			leftFade.ZIndex = 1
-			leftFade.Parent = backgroundImageLabel
-			local leftGrad = Instance.new("UIGradient")
-			leftGrad.Rotation = 0
-			leftGrad.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0),
-				NumberSequenceKeypoint.new(1, 1),
-			})
-			leftGrad.Parent = leftFade
-
-			-- Right edge fade
-			local rightFade = Instance.new("Frame")
-			rightFade.Name = "RightFade"
-			rightFade.Size = UDim2.new(0, fadeSize, 1, 0)
-			rightFade.Position = UDim2.new(1, -fadeSize, 0, 0)
-			rightFade.BackgroundColor3 = gradientColor
-			rightFade.BackgroundTransparency = 0
-			rightFade.BorderSizePixel = 0
-			rightFade.ZIndex = 1
-			rightFade.Parent = backgroundImageLabel
-			local rightGrad = Instance.new("UIGradient")
-			rightGrad.Rotation = 0
-			rightGrad.Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0),
-			})
-			rightGrad.Parent = rightFade
-
-			-- Keep BackgroundImage synced with viewport when it resizes (e.g. fullscreen toggle)
-			viewportChangedConnection = viewport.Changed:Connect(function(prop)
-				if not backgroundImageLabel then return end
-				if prop == "Size" then
-					backgroundImageLabel.Size = viewport.Size
-				elseif prop == "Position" then
-					backgroundImageLabel.Position = viewport.Position
-				elseif prop == "AnchorPoint" then
-					backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
-				end
-			end)
-		else
-			-- Update existing BackgroundImage to use new dynamic settings
-			backgroundImageLabel.Size = viewport.Size
-			backgroundImageLabel.Position = viewport.Position
-			backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
-			backgroundImageLabel.ScaleType = Enum.ScaleType.Crop
-			backgroundImageLabel.ClipsDescendants = true
-		end
+	-- Criar o StagePlane 3D dentro do WorldModel:
+	-- Um Part grande e plano posicionado atras do avatar, com um Decal para exibir o background.
+	-- Decals funcionam corretamente em ViewportFrames ao contrario de SurfaceGuis.
+	stagePlane = worldModel:FindFirstChild("StagePlane") :: Part
+	if not stagePlane then
+		stagePlane = Instance.new("Part")
+		stagePlane.Name = "StagePlane"
+		-- Plano grande o suficiente para preencher o campo de visao da camera
+		-- Camera em Z=10 olhando para Z=0; plano em Z=-6 => distancia de 16u da camera
+		-- Com FOV ~70 graus: largura visivel ~= 2*tan(35)*16 ~= 22u → usar 28x17 (16:9)
+		stagePlane.Size = Vector3.new(28, 17, 0.05)
+		stagePlane.CFrame = CFrame.new(0, 4.5, -6)
+		stagePlane.Anchored = true
+		stagePlane.CanCollide = false
+		stagePlane.CastShadow = false
+		stagePlane.Material = Enum.Material.SmoothPlastic
+		stagePlane.Color = Color3.fromRGB(30, 30, 38) -- Cor neutra escura antes de aplicar background
+		stagePlane.Parent = worldModel
 	end
 
 	isInitialized = true
@@ -469,16 +349,15 @@ end
 	Remove o fundo aplicado, voltando ao estado padrao
 ]]
 function ViewportRender.RemoveBackground(): ()
-	if backgroundImageLabel then
-		-- Fade out suave antes de remover a imagem
-		local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-		local fadeOut = TweenService:Create(backgroundImageLabel, fadeInfo, {ImageTransparency = 1})
-		fadeOut:Play()
-		fadeOut.Completed:Connect(function()
-			if backgroundImageLabel then
-				backgroundImageLabel.Image = ""
-			end
-		end)
+	if stagePlane then
+		local decal = stagePlane:FindFirstChildOfClass("Decal")
+		if decal then
+			local fadeOut = TweenService:Create(decal, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Transparency = 1})
+			fadeOut:Play()
+			fadeOut.Completed:Connect(function()
+				if decal then decal.Texture = "" end
+			end)
+		end
 	end
 
 	currentBackgroundAssetId = nil

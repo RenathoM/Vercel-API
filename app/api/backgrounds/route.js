@@ -1,44 +1,49 @@
 import { NextResponse } from 'next/server';
 
-// Catalog endpoint that filters Roblox backgrounds by subcategory
+// Curated list of confirmed Roblox Background asset IDs (assetTypeId=92).
+// The catalog subcategory filter is unreliable — we use the economy API instead.
+const KNOWN_BACKGROUND_IDS = [
+  121199209890990, // Prism Skies (Free)
+  101873719747781, // Stargazer (200 R$)
+  91937715974752,  // Soundwave (200 R$)
+  116956243809295, // Graffiti Wall (200 R$)
+  139579276427743, // Cloud Nine (200 R$)
+];
+
+// Catalog endpoint that returns confirmed Roblox background items
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const subcategory = searchParams.get('subcategory') || 'Backgrounds';
-    const requestedLimit = Number(searchParams.get('limit') || '10');  // Changed default from 28 to 10
+    // Fetch details for all known background IDs in parallel from the economy API
+    const detailResults = await Promise.all(
+      KNOWN_BACKGROUND_IDS.map(async (id) => {
+        try {
+          const res = await fetch(`https://economy.roblox.com/v2/assets/${id}/details`, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+          });
+          if (!res.ok) return null;
+          const d = await res.json();
+          // Only return confirmed background assets
+          if (d.AssetTypeId !== 92) return null;
+          return {
+            id,
+            name: d.Name || 'Background',
+            creatorName: d.Creator?.Name || 'Roblox',
+            price: d.PriceInRobux || 0,
+            description: d.Description || '',
+            assetTypeId: d.AssetTypeId,
+            priceStatus: d.IsForSale ? 'ForSale' : 'NotForSale',
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
 
-    // API only accepts these limits: 10, 28, 30
-    const validLimits = [10, 28, 30];
-    const limit = validLimits.includes(requestedLimit) ? requestedLimit : 10;  // Changed fallback from 28 to 10
-
-    // Use subcategory filter instead of keyword to get correct Background category items
-    const robloxUrl = `https://catalog.roblox.com/v1/search/items/details?subcategory=${encodeURIComponent(subcategory)}&limit=${limit}&sortType=3&sortAggregation=5&salesTypeFilter=1`;
-
-    console.log(`[API] Fetching backgrounds with subcategory="${subcategory}", limit=${limit}`);
-
-    // Request Roblox Catalog API with User-Agent header (required)
-    const response = await fetch(robloxUrl, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      },
-    });
-
-    console.log(`[API] Response status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Roblox API returned status ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
+    const data = detailResults.filter(Boolean);
+    console.log(`[API] Returning ${data.length} confirmed backgrounds`);
 
     return NextResponse.json(
-      {
-        success: true,
-        data: (data && data.data && Array.isArray(data.data)) ? data.data : [],
-      },
+      { success: true, data },
       {
         status: 200,
         headers: {
