@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+// Catalog endpoint that filters Roblox backgrounds by subcategory
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
