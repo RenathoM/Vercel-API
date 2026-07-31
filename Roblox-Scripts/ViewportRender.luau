@@ -18,7 +18,7 @@ local viewportFrame: ViewportFrame
 local worldModel: WorldModel
 local viewportCamera: Camera
 local characterClone: Model?
-local stagePlane: Part?          -- 3D backdrop Part inside WorldModel
+local backgroundImageLabel: ImageLabel?
 local isInitialized: boolean = false
 local viewportChangedConnection: RBXScriptConnection?
 
@@ -26,7 +26,7 @@ local viewportChangedConnection: RBXScriptConnection?
 local currentBackgroundAssetId: number? = nil
 local isAvatarLoaded: boolean = false
 
--- Constantes de camera � avatar HRP em Y=3, camera enquadrando o corpo inteiro
+-- Constantes de camera — avatar HRP em Y=3, camera enquadrando o corpo inteiro
 local CAMERA_AVATAR_FOCUS = CFrame.new(Vector3.new(0, 4.5, 10), Vector3.new(0, 3, 0))
 local CAMERA_BACKGROUND_FOCUS = CFrame.new(Vector3.new(0, 3, 13), Vector3.new(0, 3, -5))
 local TWEEN_INFO = TweenInfo.new(0.8, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
@@ -56,28 +56,70 @@ function ViewportRender.Initialize(viewport: ViewportFrame): ()
 	viewport.LightColor = Color3.fromRGB(255, 255, 255)
 	viewport.LightDirection = Vector3.new(-1, -1, -1)
 
--- Fundo solido escuro para o viewport (o StagePlane 3D sera o background visual)
-	viewport.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-	viewport.BackgroundTransparency = 0
+	-- Tornar o fundo do viewport transparente para que o ImageLabel atras seja visivel
+	viewport.BackgroundTransparency = 1
 
-	-- Criar o StagePlane 3D dentro do WorldModel:
-	-- Um Part grande e plano posicionado atras do avatar, com um Decal para exibir o background.
-	-- Decals funcionam corretamente em ViewportFrames ao contrario de SurfaceGuis.
-	stagePlane = worldModel:FindFirstChild("StagePlane") :: Part
-	if not stagePlane then
-		stagePlane = Instance.new("Part")
-		stagePlane.Name = "StagePlane"
-		-- Plano grande o suficiente para preencher o campo de visao da camera
-		-- Camera em Z=10 olhando para Z=0; plano em Z=-6 => distancia de 16u da camera
-		-- Com FOV ~70 graus: largura visivel ~= 2*tan(35)*16 ~= 22u → usar 28x17 (16:9)
-		stagePlane.Size = Vector3.new(28, 17, 0.05)
-		stagePlane.CFrame = CFrame.new(0, 4.5, -6)
-		stagePlane.Anchored = true
-		stagePlane.CanCollide = false
-		stagePlane.CastShadow = false
-		stagePlane.Material = Enum.Material.SmoothPlastic
-		stagePlane.Color = Color3.fromRGB(30, 30, 38) -- Cor neutra escura antes de aplicar background
-		stagePlane.Parent = worldModel
+	-- Criar ImageLabel atras da ViewportFrame para exibir o fundo
+	-- Decals e SurfaceGuis NAO funcionam bem em ViewportFrames, entao usamos
+	-- um ImageLabel 2D atras do viewport transparente como fundo
+	local parent = viewport.Parent
+	if parent then
+		backgroundImageLabel = parent:FindFirstChild("BackgroundImage") :: ImageLabel
+		if not backgroundImageLabel then
+			backgroundImageLabel = Instance.new("ImageLabel")
+			backgroundImageLabel.Name = "BackgroundImage"
+			-- Match the viewport's layout dynamically (recognized by script, not hardcoded)
+			backgroundImageLabel.Size = viewport.Size
+			backgroundImageLabel.Position = viewport.Position
+			backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
+			backgroundImageLabel.BackgroundColor3 = parent.BackgroundColor3
+			backgroundImageLabel.BackgroundTransparency = 0
+			backgroundImageLabel.Image = ""
+			backgroundImageLabel.ImageTransparency = 1
+			backgroundImageLabel.ScaleType = Enum.ScaleType.Crop
+			backgroundImageLabel.BorderSizePixel = 0
+			backgroundImageLabel.ZIndex = math.max(0, viewport.ZIndex - 1)
+			backgroundImageLabel.ClipsDescendants = true
+			backgroundImageLabel.Parent = parent
+
+			-- Copy UICorner from viewport so the background image matches the rounded shape
+			local vpCorner = viewport:FindFirstChildOfClass("UICorner")
+			if vpCorner then
+				local bgCorner = Instance.new("UICorner")
+				bgCorner.CornerRadius = vpCorner.CornerRadius
+				bgCorner.Parent = backgroundImageLabel
+			end
+
+			-- Copy UIStroke from viewport for consistent border
+			local vpStroke = viewport:FindFirstChildOfClass("UIStroke")
+			if vpStroke then
+				local bgStroke = Instance.new("UIStroke")
+				bgStroke.Color = vpStroke.Color
+				bgStroke.Thickness = vpStroke.Thickness
+				bgStroke.Transparency = vpStroke.Transparency
+				bgStroke.ApplyStrokeMode = vpStroke.ApplyStrokeMode
+				bgStroke.Parent = backgroundImageLabel
+			end
+
+			-- Keep BackgroundImage synced with viewport when it resizes (e.g. fullscreen toggle)
+			viewportChangedConnection = viewport.Changed:Connect(function(prop)
+				if not backgroundImageLabel then return end
+				if prop == "Size" then
+					backgroundImageLabel.Size = viewport.Size
+				elseif prop == "Position" then
+					backgroundImageLabel.Position = viewport.Position
+				elseif prop == "AnchorPoint" then
+					backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
+				end
+			end)
+		else
+			-- Update existing BackgroundImage to use new dynamic settings
+			backgroundImageLabel.Size = viewport.Size
+			backgroundImageLabel.Position = viewport.Position
+			backgroundImageLabel.AnchorPoint = viewport.AnchorPoint
+			backgroundImageLabel.ScaleType = Enum.ScaleType.Crop
+			backgroundImageLabel.ClipsDescendants = true
+		end
 	end
 
 	isInitialized = true
@@ -255,7 +297,7 @@ function ViewportRender.CreateMannequin(): Model?
 	return model
 end
 
--- (SetupBackgroundPlane removido � agora usamos ImageLabel atras do viewport)
+-- (SetupBackgroundPlane removido — agora usamos ImageLabel atras do viewport)
 
 --[[
 	Aplica uma textura de fundo ao ImageLabel atras da ViewportFrame
@@ -265,13 +307,14 @@ end
 function ViewportRender.ApplyBackground(assetId: number, imageUrl: string?): ()
 	currentBackgroundAssetId = assetId
 
-	-- Usar rbxthumb com resolucao maxima valida (700x700) para exibir o fundo
-	-- Tamanhos validos para Asset: 150x150, 420x420, 700x700
-	-- rbxthumb://type=Asset funciona com qualquer tipo de asset incluindo backgrounds
-	local imageUrlToUse = imageUrl and imageUrl ~= "" and imageUrl or string.format("rbxthumb://type=Asset&id=%d&w=700&h=700", assetId)
-
-	-- Se a URL passada usa 420x420, substituir por 700x700 para melhor qualidade
-	imageUrlToUse = string.gsub(imageUrlToUse, "w=420&h=420", "w=700&h=700")
+	-- rbxthumb://type=Asset e o unico tipo valido para assets do catalogo em jogos Roblox.
+	-- Tipos validos: Asset, Avatar, AvatarBust, AvatarHeadShot, BadgeIcon, BundleThumbnail,
+	-- CreatorContextAsset, DeveloperProduct, FontFamily, GameIcon, GamePass, GameThumbnail,
+	-- GroupIcon, Look, Outfit.
+	-- Nota: 'AvatarBackground' NAO e um tipo valido (erro: Batch Thumbnail invalid type).
+	-- O render panoramico 970x300 do perfil e gerado server-side pela Roblox e nao
+	-- esta disponivel via rbxthumb:// em jogos.
+	local imageUrlToUse = string.format("rbxthumb://type=Asset&id=%.0f&w=700&h=700", assetId)
 
 	-- Aplicar ao ImageLabel de fundo (atras da ViewportFrame) com transicao suave
 	if backgroundImageLabel then
@@ -300,7 +343,7 @@ function ViewportRender.ApplyBackground(assetId: number, imageUrl: string?): ()
 
 		print(string.format("[ViewportRender] Background aplicado (resolucao nativa): %s", imageUrlToUse))
 	else
-		warn("[ViewportRender] backgroundImageLabel e nil � Initialize nao criou o ImageLabel")
+		warn("[ViewportRender] backgroundImageLabel e nil — Initialize nao criou o ImageLabel")
 	end
 end
 
@@ -349,15 +392,16 @@ end
 	Remove o fundo aplicado, voltando ao estado padrao
 ]]
 function ViewportRender.RemoveBackground(): ()
-	if stagePlane then
-		local decal = stagePlane:FindFirstChildOfClass("Decal")
-		if decal then
-			local fadeOut = TweenService:Create(decal, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Transparency = 1})
-			fadeOut:Play()
-			fadeOut.Completed:Connect(function()
-				if decal then decal.Texture = "" end
-			end)
-		end
+	if backgroundImageLabel then
+		-- Fade out suave antes de remover a imagem
+		local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+		local fadeOut = TweenService:Create(backgroundImageLabel, fadeInfo, {ImageTransparency = 1})
+		fadeOut:Play()
+		fadeOut.Completed:Connect(function()
+			if backgroundImageLabel then
+				backgroundImageLabel.Image = ""
+			end
+		end)
 	end
 
 	currentBackgroundAssetId = nil

@@ -560,7 +560,8 @@ function UIController.PopulateResults(items: {CatalogService.CatalogItem}): ()
 			continue
 		end
 		local card = Instance.new("TextButton")
-		card.Name = "Card_" .. item.AssetId
+		-- Usar %.0f para evitar notacao cientifica em IDs de 15 digitos (ex: 1.21e+14)
+		card.Name = "Card_" .. string.format("%.0f", item.AssetId)
 		card.Size = UDim2.new(0.5, -5, 0, 100) -- UIGridLayout overrides, but keeps consistency
 		card.BackgroundColor3 = COLORS.CARD_BG
 		card.Text = ""
@@ -751,7 +752,8 @@ function UIController.OnCardSelected(item: CatalogService.CatalogItem, card: Tex
 
 	-- Apply background to avatar in viewport (equips on click)
 	if item.AssetId then
-		ViewportRender.ApplyBackground(item.AssetId, item.ThumbnailUrl)
+		-- Aplicar background no viewport (apenas assetId necessario)
+		ViewportRender.ApplyBackground(item.AssetId)
 	end
 	ViewportRender.FocusOnAvatar()
 end

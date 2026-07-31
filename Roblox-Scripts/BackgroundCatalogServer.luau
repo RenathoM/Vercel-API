@@ -26,35 +26,38 @@ local AVATAR_BACKGROUND_ASSET_TYPE_ID = 92
 -- hardcoded backgrounds below. Useful to verify the viewport 3D display works.
 -- Set to false for production (uses the Vercel API).
 -- =============================================================================
-local USE_TEST_BACKGROUNDS = true
+local USE_TEST_BACKGROUNDS = false  -- false = usa a Vercel API; true = usa TEST_BACKGROUNDS hardcoded
 
 local TEST_BACKGROUNDS = {
 	{
-		AssetId      = 121199209890990,
-		Name         = "Prism Skies",
-		CreatorName  = "Roblox",
-		Price        = 0,
-		Description  = "Prism Skies background.",
+		AssetId     = 121199209890990,
+		Name        = "Prism Skies",
+		CreatorName = "Roblox",
+		Price       = 0,
+		ReleaseDate = "---",
+		Description = "Prism Skies background.",
 		ThumbnailUrl = "rbxthumb://type=Asset&id=121199209890990&w=420&h=420",
-		AssetTypeId  = 92,
+		AssetTypeId = 92,
 	},
 	{
-		AssetId      = 101873719747781,
-		Name         = "Stargazer",
-		CreatorName  = "Roblox",
-		Price        = 200,
-		Description  = "Stargazer background.",
+		AssetId     = 101873719747781,
+		Name        = "Stargazer",
+		CreatorName = "Roblox",
+		Price       = 200,
+		ReleaseDate = "---",
+		Description = "Stargazer background.",
 		ThumbnailUrl = "rbxthumb://type=Asset&id=101873719747781&w=420&h=420",
-		AssetTypeId  = 92,
+		AssetTypeId = 92,
 	},
 	{
-		AssetId      = 91937715974752,
-		Name         = "Soundwave",
-		CreatorName  = "Roblox",
-		Price        = 200,
-		Description  = "Soundwave background.",
+		AssetId     = 91937715974752,
+		Name        = "Soundwave",
+		CreatorName = "Roblox",
+		Price       = 200,
+		ReleaseDate = "---",
+		Description = "Soundwave background.",
 		ThumbnailUrl = "rbxthumb://type=Asset&id=91937715974752&w=420&h=420",
-		AssetTypeId  = 92,
+		AssetTypeId = 92,
 	},
 }
 local BACKGROUND_TYPE_STRINGS = {
@@ -97,17 +100,15 @@ local function isBackgroundAssetType(assetTypeValue)
 end
 
 local function buildRobloxCatalogItem(item)
-	-- Map API fields to expected Lua structure
-	-- API returns: id, name, price, creatorName, description, priceStatus, etc.
 	return {
-		AssetId = item.id or 0,  -- API uses 'id', not 'Id'
-		Name = item.name or "No name",  -- API uses 'name' (lowercase)
-		CreatorName = item.creatorName or "Unknown",
-		Price = item.price or 0,  -- API uses 'price' (lowercase)
-		ReleaseDate = item.releaseDate or item.created or "---",
-		Description = item.description or "No description",
-		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%d&w=420&h=420", item.id or 0),
-		AssetTypeId = item.assetTypeId or AVATAR_BACKGROUND_ASSET_TYPE_ID,
+		AssetId      = item.id or 0,
+		Name         = item.name or "No name",
+		CreatorName  = item.creatorName or "Unknown",
+		Price        = item.price or 0,
+		ReleaseDate  = item.releaseDate or item.created or "---",
+		Description  = item.description or "No description",
+		ThumbnailUrl = string.format("rbxthumb://type=Asset&id=%.0f&w=420&h=420", item.id or 0),
+		AssetTypeId  = item.assetTypeId or AVATAR_BACKGROUND_ASSET_TYPE_ID,
 	}
 end
 
@@ -333,7 +334,14 @@ local function fetchBackgrounds(player, subcategory, limit)
 	}
 end
 
--- Connect the RemoteFunction to our handler
+-- Connect the RemoteFunction to our handler.
+-- Use an attribute to mark ownership so old/duplicate server scripts
+-- cannot overwrite this handler if they run concurrently.
+if getBackgroundsRF:GetAttribute("HandlerVersion") == 2 then
+	warn("[BackgroundCatalogServer] Duplicate script detected — aborting. Remove old BackgroundCatalogServer copies from ServerScriptService.")
+	return
+end
+getBackgroundsRF:SetAttribute("HandlerVersion", 2)
 getBackgroundsRF.OnServerInvoke = fetchBackgrounds
 
 print("[BackgroundCatalogServer] Ready. Listening for client requests via GetBackgroundsRF.")

@@ -250,7 +250,7 @@ local function invokeGetBackgrounds(keyword, limit)
 		return nil, "024"
 	end
 
-	if response.success ~= true then
+	if not response.success then
 		local errorCode = response.errorCode or "021"
 		warn(string.format("[BackgroundCatalog] API error in response: %s (code: %s)", tostring(response.error), errorCode))
 		return nil, errorCode

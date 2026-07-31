@@ -8,6 +8,7 @@ const KNOWN_BACKGROUND_IDS = [
   91937715974752,  // Soundwave (200 R$)
   116956243809295, // Graffiti Wall (200 R$)
   139579276427743, // Cloud Nine (200 R$)
+  132272208178794, // Magic Music Bus (200 R$)
 ];
 
 // Catalog endpoint that returns confirmed Roblox background items
